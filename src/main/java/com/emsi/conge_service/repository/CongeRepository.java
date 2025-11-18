@@ -7,6 +7,4 @@ import java.util.List;
 
 public interface CongeRepository extends JpaRepository<Conge, Long> {
     List<Conge> findByEmployeId(Long employeId);
-
-    boolean existsByEmployeId(Long employeId);
 }

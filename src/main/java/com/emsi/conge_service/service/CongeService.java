@@ -33,9 +33,8 @@ public class CongeService {
     }
 
     public List<CongeResponse> getCongesByEmployeId(Long employeId){
-        if(!congeRepository.existsByEmployeId(employeId)){
-            throw new RuntimeException("Aucun employé avec l'id " + employeId + " n'a été trouvé.");
-        }
+        // à verifier si l'employe existe via employe-service
+
         List<CongeResponse> congeList = congeRepository.findByEmployeId(employeId).stream().map(CongeMapper::toResponse).collect(Collectors.toList());
         return congeList;
     }
