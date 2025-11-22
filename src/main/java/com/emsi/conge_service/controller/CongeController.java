@@ -12,7 +12,7 @@ import java.util.List;
 
 @RestController
 @AllArgsConstructor
-@RequestMapping("/Conge")
+@RequestMapping("/api/conges")
 public class CongeController {
     private final CongeService congeService;
 
@@ -33,6 +33,7 @@ public class CongeController {
 
     @PostMapping("/add")
     public CongeResponse addConge(@RequestBody CongeRequest congeRequest){
+        System.out.println(congeRequest);
         return congeService.addConge(congeRequest);
     }
 
