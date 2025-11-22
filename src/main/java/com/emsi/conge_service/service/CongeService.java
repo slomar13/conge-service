@@ -1,9 +1,14 @@
 package com.emsi.conge_service.service;
 
+import com.emsi.conge_service.client.EmployeClient;
 import com.emsi.conge_service.dto.CongeRequest;
+import com.emsi.conge_service.dto.EmployeResponse;
 import com.emsi.conge_service.entity.Conge;
 import com.emsi.conge_service.enums.Statut;
+import com.emsi.conge_service.exception.CongeConflitException;
 import com.emsi.conge_service.exception.CongeNotFoundException;
+import com.emsi.conge_service.exception.EmployeNotFoundException;
+import com.emsi.conge_service.exception.SoldeInsuffisantException;
 import com.emsi.conge_service.mapper.CongeMapper;
 import com.emsi.conge_service.dto.CongeResponse;
 import com.emsi.conge_service.repository.CongeRepository;
@@ -21,10 +26,11 @@ import java.util.stream.Collectors;
 public class CongeService {
 
     private final CongeRepository congeRepository;
+    private final EmployeClient employeClient;
 
-    public Conge getConge(Long id){
+    public CongeResponse getCongeById(Long id){
         Conge conge = congeRepository.findById(id).orElseThrow(() -> new CongeNotFoundException("Congé " + id + " introuvable"));
-        return conge;
+        return CongeMapper.toResponse(conge);
     }
 
     public List<CongeResponse> getCongeList(){
@@ -40,17 +46,58 @@ public class CongeService {
     }
 
     @Transactional
-    public Conge addConge(CongeRequest request){
-        if (!isDateDebutInferieureDateFin(request.getDateDebut(), request.getDateFin())){
-            throw new RuntimeException("La date début doit être inferieure à la date fin ");
+    public CongeResponse addConge(CongeRequest request) {
+
+        // 1. Vérifier que l'employé existe via Feign
+        EmployeResponse employe;
+        try {
+            employe = employeClient.getEmploye(request.getEmployeId());
+        } catch (Exception ex) {
+            throw new EmployeNotFoundException("Aucun employé trouvé avec l'id : " + request.getEmployeId());
         }
-        if (isDateDebutSuperieureAujourdhui(request.getDateDebut())){
-            throw new RuntimeException("La date début doit être supérieur à celle d'aujourd'hui");
+
+        // 2. Vérifier le solde de congé disponible
+        int nombreJoursDemandes = calculerNombreDeJours(request.getDateDebut(), request.getDateFin());
+        if (employe.getSoldeConge() < nombreJoursDemandes) {
+            throw new SoldeInsuffisantException(
+                    "Solde insuffisant : employé (" + request.getEmployeId() + ") n'a que "
+                            + employe.getSoldeConge() + " jours restants."
+            );
         }
+
+        // 3. Vérifier les conflits de dates (si ta logique le nécessite)
+        boolean existeConflit = congeRepository.existsByEmployeIdAndDatesOverlap(
+                request.getEmployeId(),
+                request.getDateDebut(),
+                request.getDateFin()
+        );
+
+        if (existeConflit) {
+            throw new CongeConflitException("L'employé a déjà un congé sur cette période.");
+        }
+
+        // 4. Mapper le CongeRequest vers l'entité Conge
         Conge conge = CongeMapper.toEntity(request);
-        conge.setNombreDeJours(calculerNombreDeJours(request.getDateDebut(), request.getDateFin()));
-        return congeRepository.save(conge);
+
+        // 5. Sauvegarder le congé dans conge-service
+        Conge saved = congeRepository.save(conge);
+
+        // 6. Décrémenter le solde dans employe-service via Feign
+        try {
+            employeClient.decrementSoldeConges(
+                    request.getEmployeId(),
+                    nombreJoursDemandes
+            );
+        } catch (Exception ex) {
+            // Rollback en cas d'échec côté employe-service
+            congeRepository.delete(saved);
+            throw new RuntimeException("Erreur lors de la mise à jour du solde de congé.");
+        }
+
+        // 7. Retourner la réponse
+        return CongeMapper.toResponse(saved);
     }
+
 
     @Transactional
     public void deleteConge(Long id){
@@ -59,6 +106,7 @@ public class CongeService {
             throw new RuntimeException("Seuls les congés en statut \"en attente\" sont supprimables.");
         }
          congeRepository.delete(conge);
+        // rectifier le solde de congé via employe-service
     }
 
     @Transactional
