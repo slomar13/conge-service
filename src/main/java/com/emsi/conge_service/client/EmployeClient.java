@@ -6,13 +6,14 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 
-@FeignClient(name = "employe-service")
 @Component
+@FeignClient(name = "employe-service", path = "/api/employes")
 public interface EmployeClient {
     @GetMapping(value = "/{id}")
     EmployeResponse getEmploye(@PathVariable(name = "id") Long id);
 
-    @PatchMapping("/solde/{id}/{days}")
-    void decrementSoldeConges(@PathVariable Long id, @PathVariable int days);
+    @PostMapping("/solde/{id}/{days}")
+    void decrementSoldeConges(@PathVariable(name = "id") Long id, @PathVariable(name = "days") int days);
 }
