@@ -5,10 +5,7 @@ import com.emsi.conge_service.dto.CongeRequest;
 import com.emsi.conge_service.dto.EmployeResponse;
 import com.emsi.conge_service.entity.Conge;
 import com.emsi.conge_service.enums.Statut;
-import com.emsi.conge_service.exception.CongeConflitException;
-import com.emsi.conge_service.exception.CongeNotFoundException;
-import com.emsi.conge_service.exception.EmployeNotFoundException;
-import com.emsi.conge_service.exception.SoldeInsuffisantException;
+import com.emsi.conge_service.exception.*;
 import com.emsi.conge_service.mapper.CongeMapper;
 import com.emsi.conge_service.dto.CongeResponse;
 import com.emsi.conge_service.repository.CongeRepository;
@@ -52,8 +49,14 @@ public class CongeService {
         EmployeResponse employe;
         try {
             employe = employeClient.getEmploye(request.getEmployeId());
+            System.out.println(employe);
         } catch (Exception ex) {
             throw new EmployeNotFoundException("Aucun employé trouvé avec l'id : " + request.getEmployeId());
+        }
+
+        // Verifier que la date debut est inferieur a la date fin
+        if(!isDateDebutSuperieureAujourdhui(request.getDateDebut()) || !isDateDebutInferieureDateFin(request.getDateDebut(),request.getDateFin())){
+            throw new DateConflictException("La date debut est invalide : elle ne peut pas être ni posterieure à la date de fin, ni ultérieure à la date actuelle");
         }
 
         // 2. Vérifier le solde de congé disponible
@@ -123,7 +126,6 @@ public class CongeService {
         if (conge.getStatut() != Statut.EN_ATTENTE) throw new RuntimeException("Seuls les congés en statut \"en attente\" sont modifiables.");
 
         conge.setNombreDeJours(calculerNombreDeJours(request.getDateDebut(), request.getDateFin()));
-        conge.setTypeConge(request.getTypeConge());
         conge.setTypeConge(request.getTypeConge());
         conge.setMotif(request.getMotif());
         conge.setDateDebut(request.getDateDebut());
