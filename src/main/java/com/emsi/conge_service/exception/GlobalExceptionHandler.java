@@ -29,6 +29,15 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
 
+    @ExceptionHandler(DateConflictException.class)
+    public ResponseEntity<ErrorResponse> handleValidationException(DateConflictException ex) {
+        String message = "Date invalide";
+        String details = ex.getMessage();
+
+        ErrorResponse error = new ErrorResponse(LocalDateTime.now(), message, details);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    }
+
     @ExceptionHandler(CongeNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleEmployeeNotFoundException(CongeNotFoundException ex) {
         String message = "Le congé n'existe pas dans la base";
