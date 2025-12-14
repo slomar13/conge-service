@@ -8,12 +8,15 @@ import com.emsi.conge_service.enums.Statut;
 import com.emsi.conge_service.exception.*;
 import com.emsi.conge_service.mapper.CongeMapper;
 import com.emsi.conge_service.dto.CongeResponse;
+import com.emsi.conge_service.messaging.dto.NotificationEvent;
+import com.emsi.conge_service.messaging.publisher.NotificationPublisher;
 import com.emsi.conge_service.repository.CongeRepository;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -24,6 +27,7 @@ public class CongeService {
 
     private final CongeRepository congeRepository;
     private final EmployeClient employeClient;
+    private final NotificationPublisher notificationPublisher;
 
     public CongeResponse getCongeById(Long id){
         Conge conge = congeRepository.findById(id).orElseThrow(() -> new CongeNotFoundException("Congé " + id + " introuvable"));
@@ -43,7 +47,7 @@ public class CongeService {
     }
 
     @Transactional
-    public CongeResponse addConge(CongeRequest request) {
+    public CongeResponse addDemandeConge(CongeRequest request) {
 
         // 1. Vérifier que l'employé existe via Feign
         EmployeResponse employe;
@@ -134,6 +138,76 @@ public class CongeService {
 
         return congeRepository.save(conge);
     }
+
+
+    public CongeResponse approveConge(Long id) {
+
+        Conge conge = congeRepository.findById(id)
+                .orElseThrow(() -> new CongeNotFoundException("Congé " + id + " introuvable"));
+
+        conge.setStatut(Statut.APPROUVE);
+        congeRepository.save(conge);
+
+        EmployeResponse employe = employeClient.getEmploye(conge.getEmployeId());
+
+        String message = String.format(
+                "Bonjour %s,\n\n" +
+                        "Nous avons le plaisir de vous informer que votre demande de congé du %s au %s a été approuvée.\n\n" +
+                        "Nous vous souhaitons un excellent repos.\n\n" +
+                        "Cordialement,\n" +
+                        "Le Service des Ressources Humaines",
+                employe.getPrenom(),
+                conge.getDateDebut().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
+                conge.getDateFin().format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+        );
+
+        notificationPublisher.publish(
+                new NotificationEvent(
+                        "CONGE_APPROVED",
+                        employe.getEmail(),
+                        "Validation de votre demande de congé",
+                        message
+                )
+        );
+
+        return CongeMapper.toResponse(conge);
+    }
+
+    public CongeResponse rejectConge(Long id, String reason) {
+
+        Conge conge = congeRepository.findById(id)
+                .orElseThrow(() -> new CongeNotFoundException("Congé " + id + " introuvable"));
+
+        conge.setStatut(Statut.REFUSE);
+        congeRepository.save(conge);
+
+        EmployeResponse employe = employeClient.getEmploye(conge.getEmployeId());
+
+        String message = String.format(
+                "Bonjour %s,\n\n" +
+                        "Nous regrettons de vous informer que votre demande de congé du %s au %s n'a pas pu être acceptée.\n\n" +
+                        "Motif : %s\n\n" +
+                        "Nous vous invitons à prendre contact avec le service RH pour discuter des alternatives possibles.\n\n" +
+                        "Cordialement,\n" +
+                        "Le Service des Ressources Humaines",
+                employe.getPrenom(),
+                conge.getDateDebut().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
+                conge.getDateFin().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
+                reason
+        );
+
+        notificationPublisher.publish(
+                new NotificationEvent(
+                        "CONGE_REJECTED",
+                        employe.getEmail(),
+                        "Réponse à votre demande de congé",
+                        message
+                )
+        );
+
+        return CongeMapper.toResponse(conge);
+    }
+
 
 
     //utilitaires
